@@ -1,0 +1,21 @@
+{
+	"name": "ds_lastLoad",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ADLSBronze",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": "lastLoad.json",
+				"folderPath": "SQLData/lastLoad",
+				"fileSystem": "bronze"
+			}
+		},
+		"schema": {}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

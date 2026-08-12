@@ -1,0 +1,220 @@
+{
+	"name": "DataTransormationForGoldLayer",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"linkedService": {
+						"referenceName": "ADLSBronze",
+						"type": "LinkedServiceReference"
+					},
+					"name": "DimAirline"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ADLSBronze",
+						"type": "LinkedServiceReference"
+					},
+					"name": "FactBookings"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ADLSBronze",
+						"type": "LinkedServiceReference"
+					},
+					"name": "DimAirport"
+				}
+			],
+			"sinks": [
+				{
+					"linkedService": {
+						"referenceName": "ADLSBronze",
+						"type": "LinkedServiceReference"
+					},
+					"name": "TopAirlineAsPerCost"
+				},
+				{
+					"linkedService": {
+						"referenceName": "ADLSBronze",
+						"type": "LinkedServiceReference"
+					},
+					"name": "sinkDimAirport"
+				}
+			],
+			"transformations": [
+				{
+					"name": "JoinAirline"
+				},
+				{
+					"name": "selectColm"
+				},
+				{
+					"name": "AggAirlineName"
+				},
+				{
+					"name": "RankingAirline"
+				},
+				{
+					"name": "Top5"
+				},
+				{
+					"name": "alterRow"
+				},
+				{
+					"name": "JoinAirportId"
+				},
+				{
+					"name": "selectCol"
+				},
+				{
+					"name": "GroupTheAirport"
+				},
+				{
+					"name": "RankingAirport"
+				},
+				{
+					"name": "CheapestAirport"
+				},
+				{
+					"name": "alterRowAirport"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          airline_id as short,",
+				"          airline_name as string,",
+				"          country as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     format: 'delta',",
+				"     fileSystem: 'silver',",
+				"     folderPath: 'DimAirline') ~> DimAirline",
+				"source(output(",
+				"          booking_id as integer,",
+				"          passenger_id as integer,",
+				"          flight_id as integer,",
+				"          airline_id as integer,",
+				"          origin_airport_id as integer,",
+				"          destination_airport_id as integer,",
+				"          booking_date as date,",
+				"          ticket_cost as decimal(9,0),",
+				"          flight_duration_mins as integer,",
+				"          checkin_status as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     format: 'delta',",
+				"     fileSystem: 'silver',",
+				"     folderPath: 'FactBookings') ~> FactBookings",
+				"source(output(",
+				"          airport_id as short,",
+				"          airport_name as string,",
+				"          city as string,",
+				"          country as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     format: 'delta',",
+				"     fileSystem: 'silver',",
+				"     folderPath: 'DimAirport') ~> DimAirport",
+				"FactBookings, DimAirline join(FactBookings@airline_id == DimAirline@airline_id,",
+				"     joinType:'left',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> JoinAirline",
+				"JoinAirline select(mapColumn(",
+				"          booking_id,",
+				"          passenger_id,",
+				"          flight_id,",
+				"          airline_id = FactBookings@airline_id,",
+				"          origin_airport_id,",
+				"          destination_airport_id,",
+				"          booking_date,",
+				"          ticket_cost,",
+				"          flight_duration_mins,",
+				"          checkin_status,",
+				"          airline_name,",
+				"          country",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> selectColm",
+				"selectColm aggregate(groupBy(airline_name),",
+				"     ticket_cost = sum(ticket_cost)) ~> AggAirlineName",
+				"AggAirlineName window(desc(ticket_cost, true),",
+				"     top = denseRank()) ~> RankingAirline",
+				"RankingAirline filter(top < 6) ~> Top5",
+				"Top5 alterRow(insertIf(1==1)) ~> alterRow",
+				"DimAirport, FactBookings join(airport_id == origin_airport_id,",
+				"     joinType:'left',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> JoinAirportId",
+				"JoinAirportId select(mapColumn(",
+				"          airport_id,",
+				"          airport_name,",
+				"          city,",
+				"          country,",
+				"          booking_id,",
+				"          passenger_id,",
+				"          flight_id,",
+				"          airline_id,",
+				"          destination_airport_id,",
+				"          booking_date,",
+				"          ticket_cost,",
+				"          flight_duration_mins,",
+				"          checkin_status",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> selectCol",
+				"selectCol aggregate(groupBy(airport_name),",
+				"     ticket_cost = sum(ticket_cost)) ~> GroupTheAirport",
+				"GroupTheAirport window(asc(ticket_cost, true),",
+				"     Cheap = denseRank()) ~> RankingAirport",
+				"RankingAirport filter(Cheap == 1) ~> CheapestAirport",
+				"CheapestAirport alterRow(insertIf(1==1)) ~> alterRowAirport",
+				"alterRow sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delta',",
+				"     fileSystem: 'gold',",
+				"     folderPath: 'TopAirlinesRevenue',",
+				"     overwrite: true,",
+				"     mergeSchema: false,",
+				"     autoCompact: false,",
+				"     optimizedWrite: false,",
+				"     vacuum: 0,",
+				"     deletable: false,",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     upsertable: false,",
+				"     umask: 0022,",
+				"     preCommands: [],",
+				"     postCommands: [],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> TopAirlineAsPerCost",
+				"alterRowAirport sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     format: 'delta',",
+				"     fileSystem: 'gold',",
+				"     folderPath: 'CheapAirportRevenue',",
+				"     mergeSchema: false,",
+				"     autoCompact: false,",
+				"     optimizedWrite: false,",
+				"     vacuum: 0,",
+				"     deletable: false,",
+				"     insertable: true,",
+				"     updateable: false,",
+				"     upsertable: false,",
+				"     umask: 0022,",
+				"     preCommands: [],",
+				"     postCommands: [],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> sinkDimAirport"
+			]
+		}
+	}
+}

@@ -1,0 +1,105 @@
+{
+	"name": "ProductionPipeline",
+	"properties": {
+		"activities": [
+			{
+				"name": "MigrateOnPremData",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "MigrateOnPremData",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "MigrateGitAPIData",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "MigrateOnPremData",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "MigrateGitAPIData",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "SQLDataLoading",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "MigrateGitAPIData",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "SQLDataLoading",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "FailureAlert",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "SQLDataLoading",
+						"dependencyConditions": [
+							"Failed",
+							"Skipped",
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-28.centralindia.logic.azure.com:443/workflows/ae095d895f654467a54af5be56ad6bbf/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=V2PiS5NObf7n-gc8ipuBwXF2bOJeJ69Vuoi0CsgM75o",
+						"type": "Expression"
+					},
+					"body": {
+						"value": "{\n    \"pipeline_name\": \"@{pipeline().Pipeline}\",\n    \"run_id\": \"@{pipeline().RunId}\",\n    \"status\": \"@{activity('SQLDataLoading').Status}\",\n    \"error\": \"@{if(equals(activity('SQLDataLoading').Status, 'Failed'), activity('SQLDataLoading').error.message, 'No Error')}\"\n}",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-08-11T08:57:28Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

@@ -1,0 +1,15 @@
+{
+	"name": "ADFProject56",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "ff4ee091-8d0e-4f0e-8ad0-0baf500c6a3c",
+		"tenantId": "54ac3a52-720b-457f-9f9c-8f4d329282c3"
+	}
+}
