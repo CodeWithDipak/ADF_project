@@ -69,10 +69,8 @@
 				"type": "WebActivity",
 				"dependsOn": [
 					{
-						"activity": "SQLDataLoading",
+						"activity": "CallbackURL",
 						"dependencyConditions": [
-							"Failed",
-							"Skipped",
 							"Succeeded"
 						]
 					}
@@ -88,12 +86,42 @@
 				"typeProperties": {
 					"method": "POST",
 					"url": {
-						"value": "https://prod-28.centralindia.logic.azure.com:443/workflows/ae095d895f654467a54af5be56ad6bbf/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=V2PiS5NObf7n-gc8ipuBwXF2bOJeJ69Vuoi0CsgM75o",
+						"value": "@activity('CallbackURL').output.value",
 						"type": "Expression"
 					},
 					"body": {
 						"value": "{\n    \"pipeline_name\": \"@{pipeline().Pipeline}\",\n    \"run_id\": \"@{pipeline().RunId}\",\n    \"status\": \"@{activity('SQLDataLoading').Status}\",\n    \"error\": \"@{if(equals(activity('SQLDataLoading').Status, 'Failed'), activity('SQLDataLoading').error.message, 'No Error')}\"\n}",
 						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "CallbackURL",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "SQLDataLoading",
+						"dependencyConditions": [
+							"Succeeded",
+							"Failed",
+							"Skipped"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": "https://kv-adf-project.vault.azure.net/secrets/LogicAppCallbackUrl?api-version=7.4",
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
 					}
 				}
 			}
