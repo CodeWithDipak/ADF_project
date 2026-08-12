@@ -1,62 +1,92 @@
 # Azure Data Factory Medallion Architecture Project
 
-A hands-on **Azure Data Factory (ADF)** data engineering project that demonstrates how to build an end-to-end data ingestion and transformation platform using multiple source systems, Azure Data Lake Storage Gen2, Azure SQL Database, REST APIs, Mapping Data Flows, and a Bronze–Silver–Gold medallion architecture.
+An end-to-end **Azure Data Factory (ADF)** data engineering project demonstrating multi-source ingestion, incremental loading, Medallion Architecture, Mapping Data Flows, Delta Lake storage, pipeline orchestration, and secure Logic App notifications.
 
-The repository contains the exported ADF artifacts for the project, including pipelines, datasets, linked services, integration runtime configuration, Mapping Data Flows, and the Data Factory definition.
+The solution uses **Azure Data Factory, Azure Data Lake Storage Gen2, Azure SQL Database, REST API ingestion, Azure Key Vault, and Azure Logic Apps** to build a practical flight-booking data platform.
+
+---
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[On-Premises Files] --> B[ADF Self-hosted / File Server Integration]
-    C[Azure SQL Database] --> D[SQL Incremental Load]
-    E[REST / Git API] --> F[ADF REST Copy]
+    A[On-Premises Files] --> B[Azure Data Factory]
+    C[Azure SQL Database] --> B
+    D[REST / Git API] --> B
 
-    B --> G[Bronze - ADLS Gen2]
-    D --> G
-    F --> G
+    B --> E[Bronze - ADLS Gen2]
+    E --> F[Silver Mapping Data Flow]
+    F --> G[Silver Delta]
+    G --> H[Gold Mapping Data Flow]
+    H --> I[Gold Delta]
 
-    G --> H[Silver Mapping Data Flow]
-    H --> I[Silver Delta Tables]
-
-    I --> J[Gold Mapping Data Flow]
-    J --> K[Gold Delta Tables]
-
-    L[ProductionPipeline] --> B
-    L --> F
-    L --> D
+    B --> J[Azure Key Vault]
+    J --> K[Logic App Callback URL]
+    K --> B
+    B --> L[Logic App HTTP Trigger]
 ```
+
+### End-to-end flow
+
+```text
+On-Prem Files ───────┐
+                     │
+Azure SQL ───────────┼──> Azure Data Factory ──> Bronze
+                     │                              │
+REST / Git API ──────┘                              ▼
+                                             Silver Data Flow
+                                                    │
+                                                    ▼
+                                               Silver Delta
+                                                    │
+                                                    ▼
+                                              Gold Data Flow
+                                                    │
+                                                    ▼
+                                                Gold Delta
+
+ADF Managed Identity ──> Azure Key Vault ──> Logic App Callback URL
+ADF Web Activity ──────────────────────────> Logic App HTTP Trigger
+```
+
+---
 
 ## What This Project Demonstrates
 
-- Ingesting data from **on-premises file sources** into Azure Data Lake Storage Gen2.
-- Ingesting data from **Azure SQL Database** using an incremental-load pattern.
-- Ingesting data from a **REST API / Git-based API source**.
-- Organizing raw data in a **Bronze layer**.
-- Transforming and cleansing data into a **Silver layer** using Mapping Data Flows.
-- Creating business-oriented aggregations in a **Gold layer**.
-- Using Delta format for Silver and Gold datasets.
-- Using parameterized datasets and dynamic expressions.
-- Using Lookup, Get Metadata, ForEach, Copy, Execute Pipeline, Execute Data Flow, and Web activities.
-- Implementing upsert logic in the Silver layer.
-- Implementing ranking and aggregation logic in the Gold layer.
-- Orchestrating multiple ingestion pipelines through a production pipeline.
-- Sending pipeline execution information to an external Logic App through a Web activity.
+- Multi-source ingestion using Azure Data Factory.
+- On-premises file ingestion into ADLS Gen2.
+- REST API ingestion.
+- Incremental loading from Azure SQL Database.
+- Bronze, Silver and Gold **Medallion Architecture**.
+- Mapping Data Flow transformations.
+- Delta Lake-based Silver and Gold storage.
+- Fact and dimension processing.
+- Upsert logic using business keys.
+- Parameterized datasets and dynamic expressions.
+- Child-pipeline orchestration.
+- Pipeline status/error notification through Azure Logic Apps.
+- Secure retrieval of a Logic App callback URL from **Azure Key Vault using ADF Managed Identity**.
+- Git-based management of ADF JSON artifacts.
+
+---
 
 ## Technology Stack
 
 | Technology | Purpose |
 |---|---|
-| Azure Data Factory | Pipeline orchestration, ingestion, transformation and scheduling |
-| Azure Data Lake Storage Gen2 | Bronze, Silver and Gold data storage |
-| Azure SQL Database | Relational source and incremental data extraction |
-| REST API | External/Git API ingestion |
-| Mapping Data Flow | Data cleansing, transformation, joins, aggregation and ranking |
-| Delta Lake format | Silver and Gold analytical storage |
-| Parquet | Bronze storage for SQL fact data |
-| JSON / CSV / TXT | Source and intermediate data formats |
-| Azure Integration Runtime | Cloud connectivity and execution |
-| Logic Apps | Pipeline status/error notification endpoint |
+| **Azure Data Factory** | Pipeline orchestration, ingestion and transformation |
+| **Azure Data Lake Storage Gen2** | Bronze, Silver and Gold storage |
+| **Azure SQL Database** | Relational source and incremental extraction |
+| **REST API** | External/Git API ingestion |
+| **Azure Key Vault** | Secure storage of Logic App callback URL |
+| **Azure Logic Apps** | Pipeline status/error notification |
+| **Mapping Data Flow** | Cleansing, joins, transformations, aggregation and ranking |
+| **Delta Lake** | Silver and Gold analytical storage |
+| **Parquet** | Bronze storage for SQL fact data |
+| **Azure Integration Runtime** | Data movement and execution |
+| **GitHub** | Source control for ADF artifacts |
+
+---
 
 ## Repository Structure
 
@@ -93,6 +123,7 @@ ADF_project/
 │   ├── ADLSBronze.json
 │   ├── AzureProjectFileSystem.json
 │   ├── AzureSqlDatabase.json
+│   ├── LS_AzureKeyVault.json
 │   └── RestServiceForGit.json
 │
 ├── pipeline/
@@ -106,87 +137,113 @@ ADF_project/
 └── publish_config.json
 ```
 
-## End-to-End Data Flow
+---
 
-The main orchestration is implemented through `ProductionPipeline`.
+# Production Pipeline
+
+`ProductionPipeline` is the main orchestration pipeline.
 
 ```text
 ProductionPipeline
-        |
-        v
+        │
+        ▼
 MigrateOnPremData
-        |
-        v
+        │ Success
+        ▼
 MigrateGitAPIData
-        |
-        v
+        │ Success
+        ▼
 SQLDataLoading
-        |
-        v
-Failure / Status Notification
+        │
+        │ Success / Failed / Skipped
+        ▼
+CallbackURL
+        │
+        │ GET secret using Managed Identity
+        ▼
+Azure Key Vault
+        │
+        │ LogicAppCallbackUrl
+        ▼
+FailureAlert
+        │
+        │ POST notification
+        ▼
+Azure Logic App
 ```
 
-The repository also contains independent Silver and Gold layer pipelines that execute the Mapping Data Flows.
+The three ingestion pipelines run sequentially. `waitOnCompletion` is enabled for the child pipelines, so the production pipeline waits for each stage before continuing.
 
-## 1. On-Premises Data Ingestion
+After `SQLDataLoading`, the `CallbackURL` Web activity executes when the SQL pipeline is **Succeeded, Failed, or Skipped**. It retrieves the Logic App callback URL from Azure Key Vault. `FailureAlert` then uses the retrieved value as its URL and sends the notification payload to the Logic App.
 
-`MigrateOnPremData` discovers files from the configured on-premises folder using a **Get Metadata** activity.
+---
 
-A **ForEach** activity iterates over the discovered files and copies the data into the Bronze layer in ADLS Gen2.
+# 1. On-Premises Data Ingestion
 
-The pipeline contains schema mappings for the following dimensions:
+`MigrateOnPremData` discovers files from the configured on-premises source using **Get Metadata** and processes them using **ForEach**.
+
+The pipeline copies the required source data into the Bronze layer in ADLS Gen2.
+
+The project includes the following dimensions from the on-premises source:
 
 - `DimAirline`
 - `DimFlight`
 - `DimPassenger`
 
-The copy operation uses dynamic dataset parameters so that the file being processed can be supplied at runtime.
+Parameterized datasets are used so file paths and file names can be supplied dynamically during execution.
 
-## 2. REST / Git API Ingestion
+---
+
+# 2. REST / Git API Ingestion
 
 `MigrateGitAPIData` uses an ADF **Copy Activity** with a REST source.
 
-The API response is written to ADLS Gen2 in JSON format in the Bronze layer.
+The API response is stored in the Bronze layer in JSON format. The REST configuration supports pagination using RFC 5988-style pagination links.
 
-The pipeline uses RFC 5988 pagination support, allowing the REST connector to follow pagination links exposed by the API.
+The API data provides the airport dimension used by downstream transformations.
 
-The resulting data includes the airport dimension used later by the Silver layer.
+---
 
-## 3. Incremental Azure SQL Load
+# 3. Incremental Azure SQL Load
 
 `SQLDataLoading` implements an incremental extraction pattern for `dbo.FactBookings`.
 
-The process is:
-
-1. Read the previous successful load timestamp from `ds_lastLoad`.
-2. Query the latest `booking_date` from `dbo.FactBookings`.
-3. Extract only records where:
+The logical extraction window is:
 
 ```sql
 booking_date > lastLoad
 AND booking_date <= latestLoad
 ```
 
-4. Write the extracted records to the Bronze layer in **Parquet** format.
-5. Update the stored last-load value after a successful copy.
+### Process
 
-This avoids repeatedly loading the entire fact table.
+1. Read the previous load value.
+2. Determine the latest `booking_date` from the source.
+3. Extract records inside the incremental window.
+4. Write the extracted records to Bronze as **Parquet**.
+5. Update the last-load value after a successful load.
 
-## 4. Bronze Layer
+This avoids repeatedly loading the complete fact table.
 
-The Bronze layer stores ingested data with minimal transformation.
+---
 
-The project uses ADLS Gen2 as the storage layer and uses formats appropriate to each source. For example:
+# 4. Bronze Layer
 
-- SQL fact data → Parquet
-- REST API data → JSON
-- On-premises files → delimited text
+The Bronze layer is the raw/landing layer of the Medallion Architecture.
 
-The Bronze layer acts as the raw/landing layer from which downstream transformations are performed.
+Data is stored with minimal transformation so that downstream processing can work from the original ingestion results.
 
-## 5. Silver Layer
+Typical formats include:
 
-The `SilverLayer` pipeline executes the `DataTransformationForSilverLayer` Mapping Data Flow.
+- **Parquet** — SQL fact data.
+- **JSON** — REST API data.
+- **CSV/TXT/delimited files** — on-premises source data.
+
+---
+
+# 5. Silver Layer
+
+`SilverLayer` executes the `DataTransformationForSilverLayer` Mapping Data Flow.
 
 ### Silver sources
 
@@ -196,22 +253,21 @@ The `SilverLayer` pipeline executes the `DataTransformationForSilverLayer` Mappi
 - Passenger dimension
 - Airport dimension
 
-### Transformations implemented
+### Transformations
 
-The Mapping Data Flow performs several transformations, including:
+The Silver data flow performs transformations including:
 
-- Data type conversion
-- Filtering checked-in bookings
-- Upper-casing airline country values
-- Renaming flight timestamp columns
-- Filtering passengers by age
-- Normalizing gender values
-- Splitting passenger full names into first and last names
-- Applying upsert logic using business keys
+- Data type conversion.
+- Filtering checked-in bookings.
+- Upper-casing airline country values.
+- Renaming flight timestamp fields.
+- Filtering passengers by age.
+- Normalizing gender values.
+- Splitting passenger full names into first and last names.
+- Joining related datasets.
+- Applying upsert logic using business keys.
 
 ### Silver outputs
-
-The transformed datasets are written in **Delta format** under the Silver filesystem:
 
 ```text
 silver/
@@ -222,152 +278,135 @@ silver/
 └── DimAirport/
 ```
 
-The project uses upsert keys such as:
+Representative business keys:
 
-- `booking_id` for FactBookings
-- `airline_id` for DimAirline
-- `flight_id` for DimFlight
-- `passenger_id` for DimPassenger
-- `airport_id` for DimAirport
+| Dataset | Key |
+|---|---|
+| FactBookings | `booking_id` |
+| DimAirline | `airline_id` |
+| DimFlight | `flight_id` |
+| DimPassenger | `passenger_id` |
+| DimAirport | `airport_id` |
 
-## 6. Gold Layer
+---
 
-The `GoldLayer` pipeline executes `DataTransormationForGoldLayer`.
+# 6. Gold Layer
 
-The Gold transformation reads the Silver Delta datasets and creates business-level analytical outputs.
+`GoldLayer` executes `DataTransormationForGoldLayer` and reads the Silver Delta datasets to create business-oriented outputs.
 
-### Top airlines by total ticket cost
+## Top Airlines by Total Ticket Cost
 
-The flow:
-
-1. Joins FactBookings with DimAirline.
-2. Groups records by airline.
-3. Calculates total ticket cost.
-4. Applies a dense rank.
-5. Filters the top five airlines.
-6. Writes the result to:
+The flow joins booking and airline data, groups by airline, calculates total ticket cost, applies ranking, selects the top five airlines, and writes the result to:
 
 ```text
 gold/TopAirlinesRevenue/
 ```
 
-### Cheapest airport by total ticket cost
+## Cheapest Airport by Total Ticket Cost
 
-The flow:
-
-1. Joins airport information with booking data.
-2. Groups the data by airport.
-3. Calculates total ticket cost.
-4. Ranks airports by total cost.
-5. Selects the lowest-ranked cost result.
-6. Writes the result to:
+The flow joins airport and booking data, groups by airport, calculates total ticket cost, ranks the results, selects the lowest-cost result, and writes the result to:
 
 ```text
 gold/CheapAirportRevenue/
 ```
 
-## Pipeline Orchestration
+---
 
-The main production orchestration is:
+# Secure Logic App Notification
+
+The notification architecture was updated so that the Logic App callback URL is **not hard-coded in the ADF notification Web activity**.
+
+## Previous approach
+
+The callback URL, including its SAS signature, was embedded directly in the pipeline. This is unsafe for a public Git repository because the SAS signature can authorize calls to the Logic App.
+
+## Current approach
+
+The project now uses **Azure Key Vault + ADF Managed Identity**.
 
 ```text
-┌─────────────────────────┐
-│    ProductionPipeline   │
-└────────────┬────────────┘
-             │
-             v
-┌─────────────────────────┐
-│    MigrateOnPremData    │
-└────────────┬────────────┘
-             │ Success
-             v
-┌─────────────────────────┐
-│    MigrateGitAPIData    │
-└────────────┬────────────┘
-             │ Success
-             v
-┌─────────────────────────┐
-│     SQLDataLoading      │
-└────────────┬────────────┘
-             │
-             v
-┌─────────────────────────┐
-│ Failure / Status Alert  │
-└─────────────────────────┘
+                 Azure Key Vault
+                       │
+                       │ Secret: LogicAppCallbackUrl
+                       │
+              ADF Managed Identity
+                       │
+                       ▼
+                CallbackURL
+                 Web Activity
+                       │
+                       │ output.value
+                       ▼
+                FailureAlert
+                 Web Activity
+                       │
+                       │ POST
+                       ▼
+                 Azure Logic App
 ```
 
-The production pipeline waits for each ingestion pipeline to complete successfully before starting the next stage.
+The current `CallbackURL` activity performs a GET request to the Key Vault secret endpoint:
 
-## Monitoring and Notifications
+```text
+https://<key-vault-name>.vault.azure.net/secrets/LogicAppCallbackUrl?api-version=7.4
+```
 
-`ProductionPipeline` contains a Web activity that sends pipeline execution information to a Logic App endpoint.
+It authenticates using ADF Managed Identity with:
 
-The notification payload contains information such as:
+```text
+Resource: https://vault.azure.net
+```
 
-- Pipeline name
-- Pipeline run ID
-- Pipeline/activity status
-- Error information when applicable
+The `FailureAlert` activity uses the retrieved secret with the expression:
 
-**Important:** The Logic App endpoint currently stored in the repository contains a SAS-style signature. This is a credential and should **not** be committed to source control. The exposed endpoint should be revoked/rotated and replaced with a secure configuration mechanism such as Azure Key Vault, managed identity, or ADF secure parameters.
+```text
+@activity('CallbackURL').output.value
+```
 
-## Prerequisites
+and sends a `POST` request to the Logic App.
 
-Before deploying this project, you should have:
+The repository also contains `LS_AzureKeyVault`, the Azure Key Vault linked-service definition for the project.
 
-- An Azure subscription.
-- Azure Data Factory.
-- Azure Data Lake Storage Gen2.
-- Azure SQL Database.
-- Required source data/files.
-- An Azure Integration Runtime appropriate for the source connectivity.
-- Permissions to create and access the required Azure resources.
-- A Logic App if notification functionality is required.
+---
 
-## Deployment / Setup
+# Notification Payload
 
-This repository contains ADF-generated JSON artifacts rather than application source code.
+The Logic App receives a payload containing information such as:
 
-A typical setup is:
+```json
+{
+  "pipeline_name": "<ADF pipeline name>",
+  "run_id": "<ADF run ID>",
+  "status": "<SQLDataLoading status>",
+  "error": "<error message or No Error>"
+}
+```
 
-1. Create the required Azure resources.
-2. Create or open an Azure Data Factory instance.
-3. Configure the required Integration Runtime.
-4. Configure the linked services for:
-   - ADLS Gen2
-   - Azure SQL Database
-   - On-premises file storage
-   - REST API
-5. Configure datasets and their parameters.
-6. Import or recreate the pipelines and Mapping Data Flows from the JSON artifacts.
-7. Configure secure credentials and Key Vault references where appropriate.
-8. Validate all connections.
-9. Publish the Data Factory changes.
-10. Execute the ingestion and transformation pipelines in the required order.
+The values are generated dynamically at runtime using ADF expressions.
 
-> **Do not copy credentials, encrypted credentials, SAS URLs, passwords, or connection secrets from this repository into another environment. Reconfigure them securely in the target Azure environment.**
+---
 
-## Configuration Considerations
+# Key ADF Activities Used
 
-The JSON artifacts reference environment-specific Azure resources, including storage and SQL resources. For use in another subscription or environment, update the corresponding linked services and datasets.
+| Activity | Usage |
+|---|---|
+| **Get Metadata** | Discover on-premises files |
+| **ForEach** | Iterate through discovered files |
+| **Copy Activity** | Ingest data into ADLS Gen2 |
+| **Lookup** | Determine incremental-load boundaries |
+| **Execute Pipeline** | Orchestrate child pipelines |
+| **Execute Data Flow** | Run Silver and Gold transformations |
+| **Web Activity** | Retrieve Key Vault secret and send Logic App notification |
 
-Recommended production practices include:
+---
 
-- Azure Key Vault for secrets.
-- Managed identity authentication where supported.
-- Parameterized linked services.
-- Environment-specific configuration.
-- Separate development, test and production Data Factories.
-- Secure input/output settings for activities handling sensitive information.
-- Azure Monitor / Log Analytics for operational monitoring.
+# Data Model
 
-## Data Model
+The project uses a flight-booking domain.
 
-The project is centered around a flight-booking domain.
+## Fact
 
-### Fact table
-
-`FactBookings` contains measures and foreign keys associated with bookings, including:
+`FactBookings` contains booking-level measures and references to dimensions such as:
 
 - Booking ID
 - Passenger ID
@@ -380,94 +419,213 @@ The project is centered around a flight-booking domain.
 - Flight Duration
 - Check-in Status
 
-### Dimension tables
+## Dimensions
 
 - `DimAirline`
 - `DimFlight`
 - `DimPassenger`
 - `DimAirport`
 
-This structure provides a practical example of separating transactional facts from descriptive dimensions in a data warehouse-style model.
+This provides a practical example of separating transactional facts from descriptive dimensions for analytical processing.
 
-## Key ADF Activities Used
+---
 
-| Activity | Usage in Project |
-|---|---|
-| Get Metadata | Discover on-premises files |
-| ForEach | Iterate over discovered files |
-| Copy | Move data between source and target systems |
-| Lookup | Determine incremental load boundaries |
-| Execute Pipeline | Orchestrate child pipelines |
-| Execute Data Flow | Run Silver and Gold transformations |
-| Web | Send pipeline status to Logic App |
+# Prerequisites
 
-## Current Repository Notes
+- Azure subscription.
+- Azure Data Factory.
+- Azure Data Lake Storage Gen2.
+- Azure SQL Database.
+- Azure Key Vault.
+- Azure Logic App with an HTTP request trigger.
+- Required on-premises source files.
+- Access to the configured REST API.
+- Appropriate Azure Integration Runtime.
+- Permissions to create and access the required Azure resources.
 
-The repository currently contains the following ADF artifact categories:
+---
 
-- Pipelines
-- Mapping Data Flows
-- Datasets
-- Linked Services
-- Integration Runtime configuration
-- Data Factory configuration
-- Publish configuration
+# Azure Key Vault Configuration
 
-No separate trigger JSON artifact is currently present in the repository tree, so trigger configuration should be verified directly in the target Data Factory before deployment.
+Create a Key Vault secret named:
 
-## Security Warning
+```text
+LogicAppCallbackUrl
+```
 
-This repository currently contains environment-specific connection configuration and a Logic App invocation URL with a SAS signature in `pipeline/ProductionPipeline.json`. Treat the signature as compromised because it has been committed to a public repository.
+Store the **current Logic App callback URL** in this secret.
 
-Recommended immediate actions:
+The ADF system-assigned managed identity should have permission to read the secret. A recommended Azure RBAC role is:
 
-1. Revoke or regenerate the exposed Logic App SAS signature.
-2. Remove the secret-bearing URL from Git history if appropriate.
-3. Use Key Vault, managed identity, or secure ADF configuration instead.
-4. Review the linked-service JSON files for exposed credentials or credential metadata.
-5. Rotate any credentials associated with resources committed to the repository.
+```text
+Key Vault Secrets User
+```
 
-## Learning Objectives
+The repository contains the following Key Vault linked-service configuration:
 
-This project is useful for demonstrating practical Azure Data Engineering concepts, including:
+```text
+LS_AzureKeyVault
+```
 
-- ADF pipeline development
-- ETL/ELT orchestration
-- Incremental data loading
-- REST API ingestion
-- On-premises data integration
-- ADLS Gen2 data lake architecture
-- Medallion architecture
-- Mapping Data Flows
-- Delta Lake storage
-- Fact and dimension modeling
-- Upsert processing
-- Aggregation and ranking
-- Pipeline monitoring and notification
-- Git-based ADF artifact management
+For another environment, update the Key Vault resource reference accordingly.
 
-## Future Improvements
+> **Never commit live Logic App callback URLs, SAS signatures, passwords, API keys, connection strings, or other secrets to GitHub.**
 
-Potential improvements for production readiness include:
+---
 
-- Move all secrets to Azure Key Vault.
-- Replace hard-coded environment-specific values with parameters.
-- Add explicit trigger definitions and scheduling.
-- Add automated CI/CD validation and deployment.
-- Add data-quality checks between Bronze, Silver and Gold layers.
-- Add retry policies appropriate to each activity.
-- Add centralized monitoring and alerting.
-- Add automated tests for Mapping Data Flow logic.
-- Enable schema validation where appropriate instead of relying extensively on schema drift.
-- Add documentation for source-to-target mappings.
-- Add separate configuration for development, test and production environments.
+# Deployment / Setup
 
-## Author
+This repository contains exported ADF JSON artifacts rather than application source code.
+
+A typical deployment process is:
+
+1. Create the required Azure resources.
+2. Create or open an Azure Data Factory.
+3. Enable the Data Factory system-assigned managed identity.
+4. Create/configure Azure Key Vault.
+5. Create the `LogicAppCallbackUrl` secret.
+6. Grant ADF permission to read Key Vault secrets.
+7. Configure ADLS Gen2.
+8. Configure Azure SQL Database.
+9. Configure the REST API linked service.
+10. Configure on-premises connectivity/integration runtime.
+11. Import or recreate datasets, data flows and pipelines.
+12. Update environment-specific resource names and paths.
+13. Validate linked services.
+14. Publish the Data Factory changes.
+15. Run the ingestion pipelines.
+16. Validate Bronze, Silver and Gold outputs.
+17. Verify Logic App run history and notification payloads.
+
+---
+
+# Configuration Considerations
+
+The JSON artifacts contain environment-specific Azure resource references. When deploying to another environment, update:
+
+- Data Factory references.
+- ADLS Gen2 account/filesystem/container paths.
+- Azure SQL server/database references.
+- Key Vault URL.
+- Logic App callback URL stored in Key Vault.
+- REST API configuration.
+- Integration Runtime configuration.
+- Dataset parameters and paths.
+
+Recommended production practices:
+
+- Use Managed Identity wherever supported.
+- Store secrets in Azure Key Vault.
+- Parameterize environment-specific configuration.
+- Separate development, test and production resources.
+- Use Azure Monitor / Log Analytics for monitoring.
+- Use secure input/output settings for sensitive activities.
+- Implement CI/CD using Azure DevOps or GitHub Actions.
+
+---
+
+# Security Considerations
+
+The current working-tree version of `ProductionPipeline.json` no longer contains the Logic App callback URL. The callback URL is retrieved from Key Vault at runtime using ADF Managed Identity.
+
+### Git history
+
+The repository previously contained a Logic App callback URL with a SAS signature. Removing it from the latest file does **not** remove the old value from previous Git commits.
+
+If the repository was public while the old callback URL was valid:
+
+1. Regenerate/revoke the old Logic App access key.
+2. Treat the old SAS signature as compromised.
+3. Consider removing the secret-bearing value from Git history.
+4. Review the repository for any other credentials or sensitive configuration.
+5. Rotate any credentials that may have been exposed.
+
+The current repository should contain configuration and references, not live secrets.
+
+---
+
+# Monitoring and Error Handling
+
+The `FailureAlert` Web activity sends the status of the SQL loading stage to the Logic App.
+
+The notification includes:
+
+- Pipeline name.
+- Pipeline run ID.
+- Activity status.
+- Error information when the SQL loading activity fails.
+
+This provides a simple external notification mechanism for pipeline execution monitoring.
+
+---
+
+# Learning Objectives
+
+This project provides practical experience with:
+
+- Azure Data Factory.
+- ETL/ELT orchestration.
+- Incremental data loading.
+- REST API ingestion.
+- On-premises data integration.
+- ADLS Gen2 data lake architecture.
+- Bronze/Silver/Gold Medallion Architecture.
+- Mapping Data Flows.
+- Delta Lake.
+- Fact and dimension modeling.
+- Upsert processing.
+- Aggregation and ranking.
+- Managed Identity authentication.
+- Azure Key Vault secret management.
+- Logic App integration.
+- Pipeline monitoring and notifications.
+- Git-based ADF artifact management.
+
+---
+
+# Future Improvements
+
+Potential production-readiness improvements include:
+
+- Parameterize all environment-specific resource names.
+- Add dedicated development, test and production configurations.
+- Implement CI/CD validation and deployment.
+- Add automated data-quality checks between Bronze, Silver and Gold.
+- Add stronger retry and failure-handling policies.
+- Add centralized Azure Monitor / Log Analytics dashboards.
+- Add source-to-target mapping documentation.
+- Add automated validation of ADF JSON artifacts.
+- Add explicit trigger and scheduling configuration.
+- Consider Microsoft Entra ID-based authentication for the Logic App integration where appropriate.
+- Add a formal secrets and credential rotation process.
+
+---
+
+# Current Repository Contents
+
+The repository currently contains:
+
+- ADF pipelines.
+- Mapping Data Flows.
+- Datasets.
+- Linked Services.
+- Azure Key Vault linked-service configuration.
+- Integration Runtime configuration.
+- Data Factory configuration.
+- Publish configuration.
+
+No separate trigger JSON artifact is currently present in the repository tree, so trigger/scheduling configuration should be verified directly in the target Data Factory.
+
+---
+
+# Author
 
 **Dipak**
 
 GitHub: [CodeWithDipak](https://github.com/CodeWithDipak)
 
-## License
+---
+
+# License
 
 No license file is currently included in the repository. If this project is intended for public reuse, add an appropriate open-source license before accepting external contributions.
