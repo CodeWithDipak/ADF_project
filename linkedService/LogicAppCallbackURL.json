@@ -1,0 +1,10 @@
+{
+	"name": "LogicAppCallbackURL",
+	"properties": {
+		"annotations": [],
+		"type": "AzureKeyVault",
+		"typeProperties": {
+			"baseUrl": "https://kv-adf-project.vault.azure.net/"
+		}
+	}
+}
