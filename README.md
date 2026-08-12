@@ -524,26 +524,6 @@ Recommended production practices:
 
 ---
 
-# Security Considerations
-
-The current working-tree version of `ProductionPipeline.json` no longer contains the Logic App callback URL. The callback URL is retrieved from Key Vault at runtime using ADF Managed Identity.
-
-### Git history
-
-The repository previously contained a Logic App callback URL with a SAS signature. Removing it from the latest file does **not** remove the old value from previous Git commits.
-
-If the repository was public while the old callback URL was valid:
-
-1. Regenerate/revoke the old Logic App access key.
-2. Treat the old SAS signature as compromised.
-3. Consider removing the secret-bearing value from Git history.
-4. Review the repository for any other credentials or sensitive configuration.
-5. Rotate any credentials that may have been exposed.
-
-The current repository should contain configuration and references, not live secrets.
-
----
-
 # Monitoring and Error Handling
 
 The `FailureAlert` Web activity sends the status of the SQL loading stage to the Logic App.
