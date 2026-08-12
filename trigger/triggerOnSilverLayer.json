@@ -1,0 +1,24 @@
+{
+	"name": "triggerOnSilverLayer",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Started",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "SilverLayer",
+					"type": "PipelineReference"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Minute",
+				"interval": 15,
+				"startTime": "2026-08-13T22:28:00",
+				"timeZone": "India Standard Time"
+			}
+		}
+	}
+}
