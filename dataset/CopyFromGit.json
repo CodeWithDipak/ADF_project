@@ -8,7 +8,7 @@
 		"annotations": [],
 		"type": "RestResource",
 		"typeProperties": {
-			"relativeUrl": "anshlambagit/AnshLambaYoutube/refs/heads/main/ADF_Project/DimAirport.json"
+			"relativeUrl": "CodeWithDipak/ADF_project/refs/heads/main/SourceFiles/GitHub/DimAirport.json"
 		},
 		"schema": []
 	},
