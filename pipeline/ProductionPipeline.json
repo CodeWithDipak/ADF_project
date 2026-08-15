@@ -69,7 +69,7 @@
 				"type": "WebActivity",
 				"dependsOn": [
 					{
-						"activity": "CallbackURL",
+						"activity": "CallbackUrl",
 						"dependencyConditions": [
 							"Succeeded"
 						]
@@ -86,7 +86,7 @@
 				"typeProperties": {
 					"method": "POST",
 					"url": {
-						"value": "@activity('CallbackURL').output.value",
+						"value": "@activity('CallbackUrl').output.value",
 						"type": "Expression"
 					},
 					"body": {
@@ -96,15 +96,15 @@
 				}
 			},
 			{
-				"name": "CallbackURL",
+				"name": "CallbackUrl",
 				"type": "WebActivity",
 				"dependsOn": [
 					{
 						"activity": "SQLDataLoading",
 						"dependencyConditions": [
 							"Succeeded",
-							"Failed",
-							"Skipped"
+							"Skipped",
+							"Failed"
 						]
 					}
 				],
@@ -127,7 +127,7 @@
 			}
 		],
 		"annotations": [],
-		"lastPublishTime": "2026-08-11T08:57:28Z"
+		"lastPublishTime": "2026-08-13T10:39:11Z"
 	},
 	"type": "Microsoft.DataFactory/factories/pipelines"
 }
